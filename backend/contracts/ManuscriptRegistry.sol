@@ -28,6 +28,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	uint256 private _nextTokenId = 1;
 	mapping(uint256 => Manuscript)	private _manuscripts;
 	mapping(bytes32 => uint256)		private _hashToTokenId;
+	mapping(uint256 => uint256[]) private _children;
 
 	/// @notice Represents a registered manuscript
 	/// @dev Optimized with variable packing — slot 1: author + archived + hasParent + timestamp
@@ -36,6 +37,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		bool	archived;			// whether the manuscript has been archived by its author
 		bool	hasParent;			// true if this manuscript is a new version of an existing one
 		uint64	timestamp;			// block.timestamp at the time of registration
+		uint256	tokenId;			// manuscript tokenId
 		bytes32	hash;				// SHA-256 hash of the file
 		uint256	previousTokenId;	// 0 if initial deposit, otherwise tokenId of the previous version
 		string	title;				// title of the work
@@ -187,14 +189,14 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		_registerManuscript(hash, title, previousTokenId, true);
 	}
 
-	/// @notice Archives a manuscript — marks it as inactive without deleting it
+	/// @notice Archives a manuscript: marks it as inactive without deleting it
 	/// @dev An archived manuscript cannot be versioned
 	/// @param tokenId NFT identifier to archive
 	/// @custom:error ManuscriptNotFound If the tokenId does not exist
 	/// @custom:error ManuscriptAlreadyArchived If the manuscript is already archived
 	function archiveManuscript(uint256 tokenId) external authorOnly(tokenId) whenNotPaused {
 		require(!_manuscripts[tokenId].archived, ManuscriptAlreadyArchived());
-		_setArchived(tokenId, true);
+		_archiveRecursive(tokenId);
 		emit ManuscriptArchived(tokenId, msg.sender, uint64(block.timestamp));
 	}
 
@@ -204,11 +206,21 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @custom:error ActiveManuscript If the manuscript is already active
 	function unarchiveManuscript(uint256 tokenId) external authorOnly(tokenId) whenNotPaused {
 		require(_manuscripts[tokenId].archived, ActiveManuscript());
-		_setArchived(tokenId, false);
+		_unarchiveWithParents(tokenId);
 		emit ManuscriptUnarchived(tokenId, msg.sender, uint64(block.timestamp));
 	}
 
 	// ::::::::::::: INTERNAL FUNCTIONS ::::::::::::: //
+
+	function _archiveRecursive(uint256 tokenId) internal {
+		_setArchived(tokenId, true);
+		uint256[] memory children = _children[tokenId];
+		for (uint256 i = 0; i < children.length; i++) {
+			if (!_manuscripts[children[i]].archived) {
+				_archiveRecursive(children[i]);
+			}
+		}
+	}
 
 	/// @dev Checks whether a hash is already registered
 	/// @param hash SHA-256 hash to verify
@@ -228,7 +240,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param hash SHA-256 hash of the file
 	/// @param title Title of the work
 	/// @param previousTokenId TokenId of the previous manuscript (0 if initial deposit)
-	/// @param hasParent True if this is a new version
+	/// @param hasParent True if this is a new version of an existent manuscript
 	function _registerManuscript(bytes32 hash, string calldata title, uint256 previousTokenId, bool hasParent) internal {
 		uint256 len = bytes(title).length;
 		require(len > 0, TitleEmpty());
@@ -238,11 +250,16 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		uint64 timestamp = uint64(block.timestamp);
 		uint256 tokenId = _nextTokenId;
 
+		if (hasParent) {
+			_children[previousTokenId].push(tokenId);
+		}
+
 		_manuscripts[tokenId] = Manuscript({
 			author: msg.sender,
 			archived: false,
 			hasParent: hasParent,
 			timestamp: timestamp,
+			tokenId: tokenId,
 			hash: hash,
 			previousTokenId: previousTokenId,
 			title: title
@@ -259,5 +276,15 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param archived New archived status
 	function _setArchived(uint256 tokenId, bool archived) internal {
 		_manuscripts[tokenId].archived = archived;
+	}
+
+	function _unarchiveWithParents(uint256 tokenId) private {
+		_setArchived(tokenId, false);
+		if (_manuscripts[tokenId].hasParent) {
+			uint256 parentId = _manuscripts[tokenId].previousTokenId;
+			if (_manuscripts[parentId].archived) {
+				_unarchiveWithParents(parentId);
+			}
+		}
 	}
 }

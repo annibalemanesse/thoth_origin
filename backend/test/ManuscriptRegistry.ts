@@ -6,6 +6,7 @@ const { ethers } = await network.connect();
 
 const hash1 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v1"));
 const hash2 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v2"));
+const hash3 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v3"));
 const overflowTitle = "The forgotten manuscript of the gods: an epic journey through the ages of writing and collective memory"
 
 async function setUpSmartContract() {
@@ -30,6 +31,15 @@ async function setUpWithMultipleManuscripts() {
 	({ owner, author1, author2, manuscriptRegistry } = await setUpSmartContract());
 	await manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum');
 	await manuscriptRegistry.connect(author1).registerManuscript(hash2, 'Dolor sit amet');
+
+	return { owner, author1, author2, manuscriptRegistry };
+}
+
+async function setUpWithMultipleVersionsManuscript() {
+	let manuscriptRegistry: any;
+	let owner: any, author1: any, author2: any;
+	({ owner, author1, author2, manuscriptRegistry } = await setUpWithManuscript());
+	await manuscriptRegistry.connect(author1).registerNewVersion(hash2, 'Lorem Ipsum v.2', 1);
 
 	return { owner, author1, author2, manuscriptRegistry };
 }
@@ -195,6 +205,33 @@ describe('Manuscript registry contract', function () {
 		});
 	});
 
+	// archiveManuscript cascase
+	describe('archiveManuscript cascade', function () {
+		beforeEach(async () => {
+			({ owner, author1, author2, manuscriptRegistry } = await setUpWithMultipleVersionsManuscript());
+		});
+
+		it('Should archive children when parent is archived', async function () {
+			await manuscriptRegistry.connect(author1).archiveManuscript(1);
+			
+			const parent = await manuscriptRegistry.getManuscriptByTokenId(1);
+			const child = await manuscriptRegistry.getManuscriptByTokenId(2);
+			
+			expect(parent.archived).to.equal(true);
+			expect(child.archived).to.equal(true);
+		});
+
+		it('Should not archive already archived children twice', async function () {
+			await manuscriptRegistry.connect(author1).archiveManuscript(2);
+			await expect(
+				manuscriptRegistry.connect(author1).archiveManuscript(1)
+			).not.to.revert(ethers);
+			
+			const parent = await manuscriptRegistry.getManuscriptByTokenId(1);
+			expect(parent.archived).to.equal(true);
+		});
+	});
+
 	// unarchiveManuscript
 	describe('unarchiveManuscript', function () {
 		beforeEach(async () => {
@@ -231,6 +268,34 @@ describe('Manuscript registry contract', function () {
 		});
 	});
 
+	// cascade unarchiveManuscript
+	describe('unarchiveManuscript cascade', function () {
+
+		beforeEach(async () => {
+			({ owner, author1, author2, manuscriptRegistry } = await setUpWithManuscript());
+			await manuscriptRegistry.connect(author1).registerNewVersion(hash2, 'Lorem Ipsum v.2', 1);
+			await manuscriptRegistry.connect(author1).registerNewVersion(hash3, 'Lorem Ipsum v.3', 1);
+			await manuscriptRegistry.connect(author1).archiveManuscript(1);
+		});
+
+		it('Should unarchive parent when child is unarchived', async function () {
+			await manuscriptRegistry.connect(author1).unarchiveManuscript(2);
+
+			const parent = await manuscriptRegistry.getManuscriptByTokenId(1);
+			const child = await manuscriptRegistry.getManuscriptByTokenId(2);
+
+			expect(parent.archived).to.equal(false);
+			expect(child.archived).to.equal(false);
+		});
+
+		it('Should not unarchive siblings when child is unarchived', async function () {
+			await manuscriptRegistry.connect(author1).unarchiveManuscript(2);
+
+			const sibling = await manuscriptRegistry.getManuscriptByTokenId(3);
+			expect(sibling.archived).to.equal(true);
+		});
+	});
+
 	// getManuscriptByHash
 	describe('getManuscriptByHash', function () {
 		beforeEach(async () => {
@@ -253,11 +318,11 @@ describe('Manuscript registry contract', function () {
 		it('Should return manuscript if hash exists and contract paused', async function () {
 			await manuscriptRegistry.pause();
 
-			await expect(manuscriptRegistry.connect(author1).getManuscriptByHash(hash1)).not.to.revert;
+			await expect(manuscriptRegistry.connect(author1).getManuscriptByHash(hash1)).not.to.revert(ethers);
 		});
 
 		it('Should return manuscript if hash exists and verifyer is not the author', async function () {
-			await expect(manuscriptRegistry.connect(author2).getManuscriptByHash(hash1)).not.to.revert;
+			await expect(manuscriptRegistry.connect(author2).getManuscriptByHash(hash1)).not.to.revert(ethers);
 		});
 
 		it('Should return manuscript if hash exists and manuscript is archived', async function () {
@@ -291,11 +356,11 @@ describe('Manuscript registry contract', function () {
 		it('Should return manuscript if tokenId exists and contract paused', async function () {
 			await manuscriptRegistry.pause();
 
-			await expect(manuscriptRegistry.connect(author1).getManuscriptByTokenId(1)).not.to.revert;
+			await expect(manuscriptRegistry.connect(author1).getManuscriptByTokenId(1)).not.to.revert(ethers);
 		});
 
 		it('Should return manuscript if tokenId exists and verifyer is not the author', async function () {
-			await expect(manuscriptRegistry.connect(author2).getManuscriptByTokenId(1)).not.to.revert;
+			await expect(manuscriptRegistry.connect(author2).getManuscriptByTokenId(1)).not.to.revert(ethers);
 		});
 
 		it('Should return manuscript if tokenId exists and manuscript is archived', async function () {
@@ -353,7 +418,7 @@ describe('Manuscript registry contract', function () {
 	});
 
 	// update
-	describe.only('_update', function () {
+	describe('_update', function () {
 		it('Should not be able to transfer a manuscript NFT', async function () {
 			({ owner, author1, author2, manuscriptRegistry } = await setUpWithManuscript());
 
