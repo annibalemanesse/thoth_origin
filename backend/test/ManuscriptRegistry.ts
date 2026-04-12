@@ -34,13 +34,6 @@ async function setUpWithMultipleManuscripts() {
 	return { owner, author1, author2, manuscriptRegistry };
 }
 
-async function registerManuscripts(registry: any, signer: any, count: number, prefix: string) {
-	for (let i = 0; i < count; i++) {
-		const hash = ethers.keccak256(ethers.toUtf8Bytes(`${prefix}-${i}`));
-		await registry.connect(signer).registerManuscript(hash, `Title ${i}`);
-	}
-}
-
 async function setUpWithArchivedManuscript() {
 	let manuscriptRegistry: any;
 	let owner : any, author1 : any, author2 : any;
@@ -56,6 +49,13 @@ function deterministicRandom(seed: string, upper: number) {
 		hash = (hash * 31 + seed.charCodeAt(i)) % 0x7fffffff;
 	}
 	return hash % upper;
+}
+
+async function registerManuscripts(registry: any, signer: any, count: number, prefix: string) {
+	for (let i = 0; i < count; i++) {
+		const hash = ethers.keccak256(ethers.toUtf8Bytes(`${prefix}-${i}`));
+		await registry.connect(signer).registerManuscript(hash, `Title ${i}`);
+	}
 }
 
 describe('Manuscript registry contract', function () {
@@ -159,7 +159,7 @@ describe('Manuscript registry contract', function () {
 		});
 	});
 
-	// archive manuscript
+	// archiveManuscript
 	describe('archiveManuscript', function () {
 		beforeEach(async () => {
 			({ owner, author1, author2, manuscriptRegistry } = await setUpWithManuscript());
@@ -351,4 +351,13 @@ describe('Manuscript registry contract', function () {
 			expect(result.length).to.equal(max);
 		});
 	});
-})
+
+	// update
+	describe.only('_update', function () {
+		it('Should not be able to transfer a manuscript NFT', async function () {
+			({ owner, author1, author2, manuscriptRegistry } = await setUpWithManuscript());
+
+			await expect(manuscriptRegistry.connect(author1).transferFrom(author1.address, author2.address, 1)).to.be.revertedWithCustomError(manuscriptRegistry, "TransferNotAllowed");
+		});
+	});
+});

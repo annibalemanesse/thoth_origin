@@ -7,12 +7,13 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {ERC721Pausable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 
+error ActiveManuscript();
+error ManuscriptAlreadyArchived();
 error ManuscriptAlreadyExists();
 error ManuscriptNotFound();
-error OriginManuscriptNotFound();
 error OriginManuscriptAlreadyArchived();
-error ManuscriptAlreadyArchived();
-error ActiveManuscript();
+error OriginManuscriptNotFound();
+error TransferNotAllowed();
 error TitleEmpty();
 error TitleTooLong();
 error Unauthorized();
@@ -21,6 +22,7 @@ error Unauthorized();
 /// @notice Decentralized platform for manuscript proof of anteriority
 /// @dev ERC-721 contract allowing authors to timestamp their manuscripts on the Ethereum blockchain
 contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
+	
 	/// @notice Maximum number of manuscripts that can be retrieved at once. Built once in constructor
 	uint8 public immutable MAX_MANUSCRIPTS_PER_QUERY;
 	uint256 private _nextTokenId = 1;
@@ -39,7 +41,8 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		string	title;				// title of the work
 	}
 
-	// region Events
+	// ::::::::::::: EVENTS ::::::::::::: //
+
 	/// @notice Emitted when a new manuscript or version is registered
 	/// @param tokenId Unique NFT identifier
 	/// @param author Author's wallet address
@@ -63,7 +66,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	event ManuscriptUnarchived(uint256 indexed tokenId, address indexed author, uint64 timestamp);
 	// endregion Events
 
-	// ::::::::::::: MODIIERS ::::::::::::: //
+	// ::::::::::::: MODIFIERS ::::::::::::: //
 
 	/// @dev Checks that the tokenId exists and that the caller is its owner
 	/// @param tokenId NFT identifier to verify
@@ -79,13 +82,18 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		MAX_MANUSCRIPTS_PER_QUERY = max;
 	}
 
-	// The following functions are overrides required by Solidity.
+	// ::::::::::::: REQUIRED OVERRIDES ::::::::::::: //
 
 	function _update(address to, uint256 tokenId, address auth)
 		internal
 		override(ERC721, ERC721Enumerable, ERC721Pausable)
 		returns (address)
 	{
+		address from = _ownerOf(tokenId);
+		if (from != address(0) && to != address(0)) {
+			revert TransferNotAllowed();
+		}
+
 		return super._update(to, tokenId, auth);
 	}
 
@@ -199,7 +207,6 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		_setArchived(tokenId, false);
 		emit ManuscriptUnarchived(tokenId, msg.sender, uint64(block.timestamp));
 	}
-
 
 	// ::::::::::::: INTERNAL FUNCTIONS ::::::::::::: //
 
