@@ -32,7 +32,3 @@ jobs:
       - name: Run tests
         run: npx hardhat test
         working-directory: backend
-
-      - name: Run coverage
-        run: npx hardhat coverage
-        working-directory: backend
