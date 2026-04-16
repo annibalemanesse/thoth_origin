@@ -7,11 +7,12 @@ const { ethers } = await network.connect();
 const hash1 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v1"));
 const hash2 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v2"));
 const hash3 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v3"));
+const hash4 = ethers.keccak256(ethers.toUtf8Bytes("mon_roman_v4"));
 const overflowTitle = "The forgotten manuscript of the gods: an epic journey through the ages of writing and collective memory"
 
 async function setUpSmartContract() {
 	const [owner, author1, author2] = await ethers.getSigners();
-	const manuscriptRegistry = await ethers.deployContract("ManuscriptRegistry", [5]);
+	const manuscriptRegistry = await ethers.deployContract("ManuscriptRegistry", [5, 10]);
 
 	return { owner, author1, author2, manuscriptRegistry };
 }
@@ -69,7 +70,7 @@ async function registerManuscripts(registry: any, signer: any, count: number, pr
 }
 
 describe('Manuscript registry contract', function () {
-	
+
 	let manuscriptRegistry: any;
 	let owner : any, author1 : any, author2 : any;
 
@@ -83,12 +84,12 @@ describe('Manuscript registry contract', function () {
 			await manuscriptRegistry.pause();
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum')).to.be.revertedWithCustomError(manuscriptRegistry, 'EnforcedPause');
 		});
-	
+
 		it('Should not be able to register if exact same manuscript has been saved', async function () {
 			await manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum');
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum')).to.be.revertedWithCustomError(manuscriptRegistry, 'ManuscriptAlreadyExists');
 		});
-	
+
 		it('Should not be able to register if title is empty', async function () {
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, '')).to.be.revertedWithCustomError(manuscriptRegistry, 'TitleEmpty');
 		});
@@ -96,13 +97,13 @@ describe('Manuscript registry contract', function () {
 		it('Should not be able to register if title exceeds 100 characters', async function () {
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, overflowTitle)).to.be.revertedWithCustomError(manuscriptRegistry, 'TitleTooLong');
 		});
-	
+
 		it('Should emit a ManuscriptRegisterd event', async function () {
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum'))
 					.to.emit(manuscriptRegistry, "ManuscriptRegistered")
 					.withArgs(1, author1.address, hash1, 'Lorem Ipsum', anyValue, 0, false);
 		});
-	
+
 		it("Should create an NFT sent to author's wallet", async function () {
 			await manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum');
 			await expect(await manuscriptRegistry.ownerOf(1)).to.equal(author1.address);
@@ -169,6 +170,32 @@ describe('Manuscript registry contract', function () {
 		});
 	});
 
+	// registerNewVersion chain depth
+	describe('registerNewVersion chain depth', function () {
+		beforeEach(async () => {
+			const [o, a1, a2] = await ethers.getSigners();
+			owner = o; author1 = a1; author2 = a2;
+			// Deploy with MAX_CHAIN_DEPTH = 2 to easily reach the limit
+			manuscriptRegistry = await ethers.deployContract("ManuscriptRegistry", [5, 2]);
+			await manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum');       // token 1, depth 0
+			await manuscriptRegistry.connect(author1).registerNewVersion(hash2, 'Lorem Ipsum v.2', 1); // token 2, depth 1
+			await manuscriptRegistry.connect(author1).registerNewVersion(hash3, 'Lorem Ipsum v.3', 2); // token 3, depth 2
+		});
+
+		it('Should not be able to register new version if chain depth is exceeded', async function () {
+			await expect(
+				manuscriptRegistry.connect(author1).registerNewVersion(hash4, 'Lorem Ipsum v.4', 3)
+			).to.be.revertedWithCustomError(manuscriptRegistry, 'ChainTooDeep');
+		});
+
+		it('Should be able to register a sibling version within depth limit', async function () {
+			// token 2 is at depth 1 < MAX_CHAIN_DEPTH (2), so a sibling of token 3 is allowed
+			await expect(
+				manuscriptRegistry.connect(author1).registerNewVersion(hash4, 'Lorem Ipsum v.3b', 2)
+			).not.to.revert(ethers);
+		});
+	});
+
 	// archiveManuscript
 	describe('archiveManuscript', function () {
 		beforeEach(async () => {
@@ -205,7 +232,7 @@ describe('Manuscript registry contract', function () {
 		});
 	});
 
-	// archiveManuscript cascase
+	// archiveManuscript cascade
 	describe('archiveManuscript cascade', function () {
 		beforeEach(async () => {
 			({ owner, author1, author2, manuscriptRegistry } = await setUpWithMultipleVersionsManuscript());
@@ -213,10 +240,10 @@ describe('Manuscript registry contract', function () {
 
 		it('Should archive children when parent is archived', async function () {
 			await manuscriptRegistry.connect(author1).archiveManuscript(1);
-			
+
 			const parent = await manuscriptRegistry.getManuscriptByTokenId(1);
 			const child = await manuscriptRegistry.getManuscriptByTokenId(2);
-			
+
 			expect(parent.archived).to.equal(true);
 			expect(child.archived).to.equal(true);
 		});
@@ -226,7 +253,7 @@ describe('Manuscript registry contract', function () {
 			await expect(
 				manuscriptRegistry.connect(author1).archiveManuscript(1)
 			).not.to.revert(ethers);
-			
+
 			const parent = await manuscriptRegistry.getManuscriptByTokenId(1);
 			expect(parent.archived).to.equal(true);
 		});
@@ -378,20 +405,20 @@ describe('Manuscript registry contract', function () {
 			({ owner, author1, author2, manuscriptRegistry } = await setUpWithMultipleManuscripts());
 		});
 
-		it('Should return mauscripts if contract paused', async function () {
+		it('Should return manuscripts if contract paused', async function () {
 			await manuscriptRegistry.pause();
 
-			const manuscripts = await manuscriptRegistry.connect(author1).getManuscriptsByAuthor(author1.address);
+			const manuscripts = await manuscriptRegistry.connect(author1).getManuscriptsByAuthor(author1.address, 0);
 			expect(manuscripts.length).to.equal(2);
 		});
 
 		it("Should return other author's manuscripts", async function () {
-			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author1.address);
+			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author1.address, 0);
 			expect(manuscripts.length).to.equal(2);
 		});
 
 		it('Should return empty array if author has 0 manuscript registered', async function () {
-			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author2.address);
+			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author2.address, 0);
 			expect(manuscripts.length).to.equal(0);
 		});
 
@@ -402,7 +429,7 @@ describe('Manuscript registry contract', function () {
 
 			await registerManuscripts(manuscriptRegistry, author1, toAdd, 'manuscript');
 
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address);
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 0);
 			expect(result.length).to.equal(setupCount + toAdd);
 		});
 
@@ -412,8 +439,19 @@ describe('Manuscript registry contract', function () {
 
 			await registerManuscripts(manuscriptRegistry, author1, toAdd, 'manuscript-fuzz');
 
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address);
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 0);
 			expect(result.length).to.equal(max);
+		});
+
+		it('Should return manuscripts from a non-zero offset', async function () {
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 1);
+			expect(result.length).to.equal(1);
+			expect(result[0].hash).to.equal(hash2);
+		});
+
+		it('Should return empty array if offset exceeds balance', async function () {
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 99);
+			expect(result.length).to.equal(0);
 		});
 	});
 

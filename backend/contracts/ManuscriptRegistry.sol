@@ -8,6 +8,7 @@ import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/
 import {ERC721Pausable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 
 error ActiveManuscript();
+error ChainTooDeep();
 error ManuscriptAlreadyArchived();
 error ManuscriptAlreadyExists();
 error ManuscriptNotFound();
@@ -22,13 +23,16 @@ error Unauthorized();
 /// @notice Decentralized platform for manuscript proof of anteriority
 /// @dev ERC-721 contract allowing authors to timestamp their manuscripts on the Ethereum blockchain
 contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable {
-	
-	/// @notice Maximum number of manuscripts that can be retrieved at once. Built once in constructor
+
+	/// @notice Maximum number of manuscripts that can be retrieved per query. Set once in constructor
 	uint8 public immutable MAX_MANUSCRIPTS_PER_QUERY;
+	/// @notice Maximum depth of a version chain. Set once in constructor
+	uint8 public immutable MAX_CHAIN_DEPTH;
 	uint256 private _nextTokenId = 1;
 	mapping(uint256 => Manuscript)	private _manuscripts;
 	mapping(bytes32 => uint256)		private _hashToTokenId;
-	mapping(uint256 => uint256[]) private _children;
+	mapping(uint256 => uint256[])	private _children;
+	mapping(uint256 => uint8)		private _depths;
 
 	/// @notice Represents a registered manuscript
 	/// @dev Optimized with variable packing — slot 1: author + archived + hasParent + timestamp
@@ -66,7 +70,6 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param author Author's wallet address
 	/// @param timestamp Block timestamp
 	event ManuscriptUnarchived(uint256 indexed tokenId, address indexed author, uint64 timestamp);
-	// endregion Events
 
 	// ::::::::::::: MODIFIERS ::::::::::::: //
 
@@ -80,8 +83,9 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 
 	// ::::::::::::: INIT ::::::::::::: //
 
-	constructor(uint8 max) ERC721("ThothOrigin", "THOT") Ownable(msg.sender) {
+	constructor(uint8 max, uint8 maxDepth) ERC721("ThothOrigin", "THOT") Ownable(msg.sender) {
 		MAX_MANUSCRIPTS_PER_QUERY = max;
+		MAX_CHAIN_DEPTH = maxDepth;
 	}
 
 	// ::::::::::::: REQUIRED OVERRIDES ::::::::::::: //
@@ -117,13 +121,24 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 
 	// ::::::::::::: GETTERS ::::::::::::: //
 
-	/// @notice Retrieves a manuscript by its tokenId
-	/// @param tokenId Unique NFT identifier
-	/// @return Manuscript The full manuscript struct
-	/// @custom:error ManuscriptNotFound If the tokenId does not exist
-	function getManuscriptByTokenId(uint256 tokenId) public view returns(Manuscript memory) {
-		require(tokenIdExists(tokenId), ManuscriptNotFound());
-		return _manuscripts[tokenId];
+	/// @notice Retrieves a paginated list of manuscripts belonging to an author
+	/// @dev Uses ERC721Enumerable to iterate over the address's tokens.
+	///      The caller can use balanceOf(author) to compute the total and paginate.
+	/// @param author Author's wallet address
+	/// @param offset Index to start from (0-based)
+	/// @return Manuscript[] Array of up to MAX_MANUSCRIPTS_PER_QUERY manuscripts
+	function getManuscriptsByAuthor(address author, uint256 offset) external view returns(Manuscript[] memory) {
+		uint256 balance = balanceOf(author);
+		if (offset >= balance) return new Manuscript[](0);
+
+		uint256 remaining = balance - offset;
+		uint256 size = remaining < MAX_MANUSCRIPTS_PER_QUERY ? remaining : MAX_MANUSCRIPTS_PER_QUERY;
+		Manuscript[] memory result = new Manuscript[](size);
+		for (uint256 i = 0; i < size; i++) {
+			result[i] = _manuscripts[tokenOfOwnerByIndex(author, offset + i)];
+		}
+
+		return result;
 	}
 
 	/// @notice Retrieves a manuscript by its SHA-256 hash
@@ -132,23 +147,17 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @return Manuscript The full manuscript struct
 	/// @custom:error ManuscriptNotFound If the hash is not registered
 	function getManuscriptByHash(bytes32 hash) external view returns(Manuscript memory) {
-		require(hashExists(hash), ManuscriptNotFound());
+		require(_hashExists(hash), ManuscriptNotFound());
 		return getManuscriptByTokenId(_hashToTokenId[hash]);
 	}
 
-	/// @notice Retrieves all manuscripts belonging to an author
-	/// @dev Uses ERC721Enumerable to iterate over the address's tokens
-	/// @param author Author's wallet address
-	/// @return Manuscript[] Array of manuscripts owned by the author
-	function getManuscriptsByAuthor(address author) external view returns(Manuscript[] memory) {
-		uint256 balance = balanceOf(author);
-		uint256 size = balance < MAX_MANUSCRIPTS_PER_QUERY ? balance : MAX_MANUSCRIPTS_PER_QUERY;
-		Manuscript[] memory result = new Manuscript[](size);
-		for (uint256 i = 0; i < size; i++) {
-			result[i] = _manuscripts[tokenOfOwnerByIndex(author, i)];
-		}
-
-		return result;
+	/// @notice Retrieves a manuscript by its tokenId
+	/// @param tokenId Unique NFT identifier
+	/// @return Manuscript The full manuscript struct
+	/// @custom:error ManuscriptNotFound If the tokenId does not exist
+	function getManuscriptByTokenId(uint256 tokenId) public view returns(Manuscript memory) {
+		require(tokenIdExists(tokenId), ManuscriptNotFound());
+		return _manuscripts[tokenId];
 	}
 
 	// ::::::::::::: EXTERNAL FUNCTIONS ::::::::::::: //
@@ -172,7 +181,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @custom:error TitleTooLong If the title exceeds 100 characters
 	/// @custom:error ManuscriptAlreadyExists If the hash is already registered
 	function registerManuscript(bytes32 hash, string calldata title) external whenNotPaused {
-		_registerManuscript(hash, title, 0, false);
+		_registerManuscript(hash, title, 0, false, 0);
 	}
 
 	/// @notice Registers a new version of an existing manuscript
@@ -181,51 +190,42 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param previousTokenId TokenId of the manuscript this version is derived from
 	/// @custom:error OriginManuscriptNotFound If the previousTokenId does not exist
 	/// @custom:error OriginManuscriptAlreadyArchived If the previous manuscript is archived
+	/// @custom:error ChainTooDeep If the version chain has reached MAX_CHAIN_DEPTH
 	function registerNewVersion(bytes32 hash, string calldata title, uint256 previousTokenId) external whenNotPaused {
 		require(tokenIdExists(previousTokenId), OriginManuscriptNotFound());
 		require(ownerOf(previousTokenId) == msg.sender, Unauthorized());
 		require(!_manuscripts[previousTokenId].archived, OriginManuscriptAlreadyArchived());
+		require(_depths[previousTokenId] < MAX_CHAIN_DEPTH, ChainTooDeep());
 
-		_registerManuscript(hash, title, previousTokenId, true);
+		_registerManuscript(hash, title, previousTokenId, true, _depths[previousTokenId] + 1);
 	}
 
 	/// @notice Archives a manuscript: marks it as inactive without deleting it
-	/// @dev An archived manuscript cannot be versioned
+	/// @dev An archived manuscript cannot be versioned. Children are archived recursively.
 	/// @param tokenId NFT identifier to archive
 	/// @custom:error ManuscriptNotFound If the tokenId does not exist
 	/// @custom:error ManuscriptAlreadyArchived If the manuscript is already archived
 	function archiveManuscript(uint256 tokenId) external authorOnly(tokenId) whenNotPaused {
 		require(!_manuscripts[tokenId].archived, ManuscriptAlreadyArchived());
 		_archiveRecursive(tokenId);
-		emit ManuscriptArchived(tokenId, msg.sender, uint64(block.timestamp));
 	}
 
 	/// @notice Unarchives a manuscript — restores it to active status
+	/// @dev Parents are unarchived recursively if needed. Siblings are not affected.
 	/// @param tokenId NFT identifier to unarchive
 	/// @custom:error ManuscriptNotFound If the tokenId does not exist
 	/// @custom:error ActiveManuscript If the manuscript is already active
 	function unarchiveManuscript(uint256 tokenId) external authorOnly(tokenId) whenNotPaused {
 		require(_manuscripts[tokenId].archived, ActiveManuscript());
 		_unarchiveWithParents(tokenId);
-		emit ManuscriptUnarchived(tokenId, msg.sender, uint64(block.timestamp));
 	}
 
 	// ::::::::::::: INTERNAL FUNCTIONS ::::::::::::: //
 
-	function _archiveRecursive(uint256 tokenId) internal {
-		_setArchived(tokenId, true);
-		uint256[] memory children = _children[tokenId];
-		for (uint256 i = 0; i < children.length; i++) {
-			if (!_manuscripts[children[i]].archived) {
-				_archiveRecursive(children[i]);
-			}
-		}
-	}
-
 	/// @dev Checks whether a hash is already registered
 	/// @param hash SHA-256 hash to verify
 	/// @return bool True if the hash exists
-	function hashExists(bytes32 hash) internal view returns(bool) {
+	function _hashExists(bytes32 hash) internal view returns(bool) {
 		return _hashToTokenId[hash] != 0;
 	}
 
@@ -241,14 +241,16 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param title Title of the work
 	/// @param previousTokenId TokenId of the previous manuscript (0 if initial deposit)
 	/// @param hasParent True if this is a new version of an existent manuscript
-	function _registerManuscript(bytes32 hash, string calldata title, uint256 previousTokenId, bool hasParent) internal {
+	/// @param depth Depth of this manuscript in the version chain (0 for root)
+	function _registerManuscript(bytes32 hash, string calldata title, uint256 previousTokenId, bool hasParent, uint8 depth) internal {
 		uint256 len = bytes(title).length;
 		require(len > 0, TitleEmpty());
 		require(len <= 100, TitleTooLong());
-		require(!hashExists(hash), ManuscriptAlreadyExists());
+		require(!_hashExists(hash), ManuscriptAlreadyExists());
 
 		uint64 timestamp = uint64(block.timestamp);
 		uint256 tokenId = _nextTokenId;
+		_depths[tokenId] = depth;
 
 		if (hasParent) {
 			_children[previousTokenId].push(tokenId);
@@ -271,20 +273,36 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		emit ManuscriptRegistered(tokenId, msg.sender, hash, title, timestamp, previousTokenId, hasParent);
 	}
 
-	/// @dev Updates the archived status of a manuscript
+	/// @dev Archives the manuscript and all its descendants recursively
 	/// @param tokenId NFT identifier
-	/// @param archived New archived status
-	function _setArchived(uint256 tokenId, bool archived) internal {
-		_manuscripts[tokenId].archived = archived;
+	function _archiveRecursive(uint256 tokenId) internal {
+		_setArchived(tokenId, true);
+		emit ManuscriptArchived(tokenId, msg.sender, uint64(block.timestamp));
+		uint256[] memory children = _children[tokenId];
+		for (uint256 i = 0; i < children.length; i++) {
+			if (!_manuscripts[children[i]].archived) {
+				_archiveRecursive(children[i]);
+			}
+		}
 	}
 
-	function _unarchiveWithParents(uint256 tokenId) private {
+	/// @dev Unarchives the manuscript and all its ancestors recursively
+	/// @param tokenId NFT identifier
+	function _unarchiveWithParents(uint256 tokenId) internal {
 		_setArchived(tokenId, false);
+		emit ManuscriptUnarchived(tokenId, msg.sender, uint64(block.timestamp));
 		if (_manuscripts[tokenId].hasParent) {
 			uint256 parentId = _manuscripts[tokenId].previousTokenId;
 			if (_manuscripts[parentId].archived) {
 				_unarchiveWithParents(parentId);
 			}
 		}
+	}
+
+	/// @dev Updates the archived status of a manuscript
+	/// @param tokenId NFT identifier
+	/// @param archived New archived status
+	function _setArchived(uint256 tokenId, bool archived) internal {
+		_manuscripts[tokenId].archived = archived;
 	}
 }

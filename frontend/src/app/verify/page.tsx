@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useReadContract } from 'wagmi'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
+import { generateCertificate } from '@/utils/certificate'
 
 type Tab = 'file' | 'hash' | 'tokenId'
 
@@ -247,6 +248,9 @@ export default function VerifyPage() {
 										)}
 									</div>
 								</div>
+								<button onClick={() => generateCertificate(manuscript)} className="...">
+									Download certificate
+								</button>
 							</div>
 						)}
 					</div>

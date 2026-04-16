@@ -3,7 +3,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants';
+import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
+import { generateCertificate } from '@/utils/certificate'
 
 type Step = 'file' | 'info' | 'confirm'
 
@@ -18,6 +19,7 @@ export default function DepositPage() {
 		'image/png',
 		'image/tiff',
 	]
+	const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
 	const chainId = useChainId()
 	const { address, isConnected } = useConnection()
 	const [step, setStep] = useState<Step>('file')
@@ -29,13 +31,27 @@ export default function DepositPage() {
 	const [dragOver, setDragOver] = useState(false)
 	const [hasError, setHasError] = useState(false)
 	const { mutate, data: txHash, isPending, error, reset } = useWriteContract()
-	const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash })
+	const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
+	const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null)
+
 	useEffect(() => {
-		if (isSuccess) setStep('confirm')
-	}, [isSuccess])
+		if (isSuccess && receipt) {
+			setStep('confirm')
+			const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
+			const log = receipt.logs.find(l =>
+				l.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase() &&
+				l.topics[0].toLowerCase() === MANUSCRIPT_REGISTERED_TOPIC
+			)
+			if (log && log.topics[1]) {
+				setMintedTokenId(BigInt(log.topics[1]))
+			}
+		}
+	}, [isSuccess, receipt])
+
 	useEffect(() => {
 		if (error) setHasError(true)
 	}, [error])
+
 	const computeHash = async (f: File): Promise<`0x${string}`> => {
 		const buffer = await f.arrayBuffer()
 		const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
@@ -272,6 +288,23 @@ export default function DepositPage() {
 						>
 							View my manuscripts →
 						</Link>
+						{isSuccess && mintedTokenId !== null && (
+							<button
+								onClick={() => generateCertificate({
+									author: address!,
+									archived: false,
+									hasParent: !!previousTokenId,
+									timestamp: BigInt(Math.floor(Date.now() / 1000)),
+									tokenId: mintedTokenId ?? BigInt(0),
+									hash: hash!,
+									previousTokenId: previousTokenId ? BigInt(previousTokenId) : BigInt(0),
+									title: title,
+								}, txHash)}
+								className="block mx-auto mt-4 px-4 py-2 rounded-lg bg-[#BA7517] text-white text-sm hover:bg-[#EF9F27] transition-colors cursor-pointer"
+							>
+								Download certificate
+							</button>
+						)}
 					</div>
 				)}
 
