@@ -217,6 +217,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @custom:error ActiveManuscript If the manuscript is already active
 	function unarchiveManuscript(uint256 tokenId) external authorOnly(tokenId) whenNotPaused {
 		require(_manuscripts[tokenId].archived, ActiveManuscript());
+		// safe: transfers are disabled, owner == original author for the entire chain
 		_unarchiveWithParents(tokenId);
 	}
 
