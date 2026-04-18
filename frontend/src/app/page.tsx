@@ -102,7 +102,7 @@ export default function Home() {
 			{/* Stats */}
 			<section className="px-6 pb-16 max-w-6xl mx-auto grid grid-cols-3 gap-6">
 				<div className="bg-[#26215C]/20 rounded-lg p-5 text-center">
-					<div className="text-2xl font-medium text-[#534AB7]">{totalSupply !== undefined ? totalSupply.toString() : '—'}</div>
+					<div className="text-2xl font-medium text-[#534AB7]">{totalSupply != null ? totalSupply.toString() : '—'}</div>
 					<div className="text-[#CECBF6]/60 text-xs mt-1">Manuscripts deposited</div>
 				</div>
 				<div className="bg-[#26215C]/20 rounded-lg p-5 text-center">
