@@ -73,7 +73,7 @@ export default function Home() {
 					<div className="w-1 min-h-12 rounded-full bg-[#BA7517] flex-shrink-0 mt-1"/>
 					<div>
 						<p className="text-[#CECBF6] text-sm italic leading-relaxed">
-							"Thoth was the scribe of the gods, guardian of the celestial archives — the one who recorded every act, every word, every work for eternity. ThothOrigin carries on this legacy on the blockchain."
+							"Thoth was the scribe of the gods, guardian of the celestial archives. The one who recorded every act, every word, every work for eternity. ThothOrigin carries on this legacy on the blockchain."
 						</p>
 						<p className="text-[#BA7517] text-xs mt-2">Ancient Egyptian mythology · Pyramid Texts</p>
 					</div>
@@ -90,12 +90,12 @@ export default function Home() {
 				<div className="bg-[#26215C]/40 border border-[#AFA9EC]/10 rounded-xl p-6">
 					<div className="w-9 h-9 rounded-lg bg-[#FAEEDA]/10 flex items-center justify-center mb-4 text-base">⭐</div>
 					<h3 className="text-white font-medium text-sm mb-2">Certified NFT</h3>
-					<p className="text-[#CECBF6]/70 text-sm leading-relaxed">Each deposit generates a unique ERC-721 NFT — your inalterable digital proof of ownership. Soulbound: non-transferable by design.</p>
+					<p className="text-[#CECBF6]/70 text-sm leading-relaxed">Each deposit generates a unique ERC-721 NFT: your inalterable digital proof of ownership. Soulbound: non-transferable by design.</p>
 				</div>
 				<div className="bg-[#26215C]/40 border border-[#AFA9EC]/10 rounded-xl p-6">
 					<div className="w-9 h-9 rounded-lg bg-[#E1F5EE]/10 flex items-center justify-center mb-4 text-base">✅</div>
 					<h3 className="text-white font-medium text-sm mb-2">Public verification</h3>
-					<p className="text-[#CECBF6]/70 text-sm leading-relaxed">Anyone can verify the authenticity of a hash — no wallet required. The proof is open and transparent.</p>
+					<p className="text-[#CECBF6]/70 text-sm leading-relaxed">Anyone can verify the authenticity of a hash, no wallet required. The proof is open and transparent.</p>
 				</div>
 			</section>
 

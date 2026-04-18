@@ -4,6 +4,7 @@ import { useConnection, useReadContract, useWriteContract, useWaitForTransaction
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 type Manuscript = {
 	author: string
@@ -192,7 +193,9 @@ export default function DashboardPage() {
 		return (
 			<div className="min-h-screen bg-[#1a1730] flex items-center justify-center">
 				<div className="text-center">
-					<div className="text-4xl mb-4">𓅭</div>
+					<div className="flex justify-center mb-4">
+						<Image src="/logo.png" alt="ThothOrigin" width={240} height={240} style={{ objectFit: 'contain' }} />
+					</div>
 					<h2 className="text-white font-medium text-lg mb-2">Connect your wallet</h2>
 					<p className="text-[#CECBF6]/60 text-sm">You need to connect your wallet to view your manuscripts.</p>
 					<div style={{ display: 'flex', justifyContent: 'center', marginTop: '24px' }}>

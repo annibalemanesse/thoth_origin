@@ -11,7 +11,17 @@ type Manuscript = {
 	title: string
 }
 
-export const generateCertificate = (manuscript: Manuscript, txHash?: string) => {
+const loadImageAsBase64 = (src: string): Promise<string> =>
+	fetch(src)
+		.then(r => r.blob())
+		.then(blob => new Promise((resolve, reject) => {
+			const reader = new FileReader()
+			reader.onload = () => resolve(reader.result as string)
+			reader.onerror = reject
+			reader.readAsDataURL(blob)
+		}))
+
+export const generateCertificate = async (manuscript: Manuscript, txHash?: string) => {
 	const doc = new jsPDF()
 	const pageWidth = doc.internal.pageSize.getWidth()
 
@@ -156,7 +166,7 @@ export const generateCertificate = (manuscript: Manuscript, txHash?: string) => 
 	doc.setTextColor(...gold)
 	doc.setFontSize(8)
 	doc.setFont('helvetica', 'bold')
-	doc.text('Soulbound NFT — non-transferable by design · Ethereum Sepolia · ERC-721', pageWidth / 2, y + 4, { align: 'center' })
+	doc.text('Soulbound NFT: non-transferable by design · Ethereum Sepolia · ERC-721', pageWidth / 2, y + 4, { align: 'center' })
 
 	// Gold separator
 	doc.setDrawColor(...gold)
@@ -168,6 +178,12 @@ export const generateCertificate = (manuscript: Manuscript, txHash?: string) => 
 	doc.setFontSize(10)
 	doc.setFont('helvetica', 'bold')
 	doc.text('ThothOrigin · Blockchain proof of anteriority · Ethereum Sepolia', pageWidth / 2, 285, { align: 'center' })
+
+	// Stamp dans le header
+	try {
+		const stampData = await loadImageAsBase64('/stamp.png')
+		doc.addImage(stampData, 'PNG', 15, 5, 38, 38)
+	} catch {}
 
 	doc.save(`thothorigin-certificate-${manuscript.tokenId}.pdf`)
 }

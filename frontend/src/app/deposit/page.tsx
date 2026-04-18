@@ -2,24 +2,29 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId, useBlock } from 'wagmi'
+import Image from 'next/image'
+import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId, useBlock, useConfig } from 'wagmi'
+import { simulateContract } from '@wagmi/core'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
 import { generateCertificate } from '@/utils/certificate'
 
 type Step = 'file' | 'info' | 'confirm'
 
+const ACCEPTED_FORMATS = [
+	'application/pdf',
+	'application/msword',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'text/plain',
+	'application/epub+zip',
+	'image/jpeg',
+	'image/png',
+	'image/tiff',
+]
+
+const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
+
 export default function DepositPage() {
-	const ACCEPTED_FORMATS = [
-		'application/pdf',
-		'application/msword',
-		'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-		'text/plain',
-		'application/epub+zip',
-		'image/jpeg',
-		'image/png',
-		'image/tiff',
-	]
-	const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
+	const config = useConfig()
 	const chainId = useChainId()
 	const { address, isConnected } = useConnection()
 	const [step, setStep] = useState<Step>('file')
@@ -29,9 +34,10 @@ export default function DepositPage() {
 	const [previousTokenId, setPreviousTokenId] = useState('')
 	const [isHashing, setIsHashing] = useState(false)
 	const [dragOver, setDragOver] = useState(false)
-	const [hasError, setHasError] = useState(false)
-	const { mutate, data: txHash, isPending, error, reset } = useWriteContract()
-	const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
+	const [simulateError, setSimulateError] = useState<Error | null>(null)
+	const { mutate, data: txHash, isPending, error: writeError, reset } = useWriteContract()
+	const { isLoading: isConfirming, isSuccess, data: receipt, error: receiptError } = useWaitForTransactionReceipt({ hash: txHash })
+	const error = simulateError ?? writeError ?? receiptError
 	const { data: block } = useBlock({ blockNumber: receipt?.blockNumber, query: { enabled: !!receipt?.blockNumber } })
 	const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null)
 	const [blockTimestamp, setBlockTimestamp] = useState<bigint | null>(null)
@@ -43,7 +49,6 @@ export default function DepositPage() {
 	useEffect(() => {
 		if (isSuccess && receipt) {
 			setStep('confirm')
-			const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
 			const log = receipt.logs.find(l =>
 				l.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase() &&
 				l.topics[0]?.toLowerCase() === MANUSCRIPT_REGISTERED_TOPIC
@@ -55,7 +60,7 @@ export default function DepositPage() {
 	}, [isSuccess, receipt])
 
 	useEffect(() => {
-		if (error) setHasError(true)
+		if (error) setStep('info')
 	}, [error])
 
 	const computeHash = async (f: File): Promise<`0x${string}`> => {
@@ -97,28 +102,31 @@ export default function DepositPage() {
 
 	const handleSubmit = async () => {
 		if (!hash || !title) return
+		setSimulateError(null)
+
+		const base = { address: CONTRACT_ADDRESS, abi: CONTRACT_ABI } as const
+		const params = previousTokenId
+			? { ...base, functionName: 'registerNewVersion' as const, args: [hash as `0x${string}`, title, BigInt(previousTokenId)] as const }
+			: { ...base, functionName: 'registerManuscript' as const, args: [hash as `0x${string}`, title] as const }
+
 		if (previousTokenId) {
-			mutate({
-				address: CONTRACT_ADDRESS,
-				abi: CONTRACT_ABI,
-				functionName: 'registerNewVersion',
-				args: [hash as `0x${string}`, title, BigInt(previousTokenId)],
-				gas: BigInt(500000),
-			})
-		} else {
-			mutate({
-				address: CONTRACT_ADDRESS,
-				abi: CONTRACT_ABI,
-				functionName: 'registerManuscript',
-				args: [hash as `0x${string}`, title],
-				gas: BigInt(500000),
-			})
+			try {
+				await simulateContract(config, params)
+			} catch (err) {
+				setSimulateError(err as Error)
+				return
+			}
 		}
+
+		mutate({ ...params, gas: BigInt(500000) })
 	}
 
 	const getErrorMessage = (error: unknown): string => {
 		if (!error) return ''
-		const message = (error as Error).message ?? ''
+		const e = error as { message?: string; shortMessage?: string; details?: string; cause?: { message?: string; shortMessage?: string } }
+		const haystack = [e.message, e.shortMessage, e.details, e.cause?.message, e.cause?.shortMessage]
+			.filter(Boolean)
+			.join(' ')
 
 		const errors: Record<string, string> = {
 			'OriginManuscriptNotFound': 'The previous version token ID does not exist.',
@@ -128,10 +136,10 @@ export default function DepositPage() {
 			'TitleEmpty': 'The title cannot be empty.',
 			'TitleTooLong': 'The title exceeds 100 characters.',
 			'Internal error': 'The previous version token ID does not exist or is invalid.',
+			'User rejected': 'Transaction rejected.',
 		}
 
-		console.log(error);
-		const key = Object.keys(errors).find(k => message.includes(k))
+		const key = Object.keys(errors).find(k => haystack.includes(k))
 		return key ? errors[key] : 'An error occurred. Please try again.'
 	}
 
@@ -139,7 +147,9 @@ export default function DepositPage() {
 		return (
 			<div className="min-h-screen bg-[#1a1730] flex items-center justify-center">
 				<div className="text-center">
-					<div className="text-4xl mb-4">𓅭</div>
+					<div className="flex justify-center mb-4">
+						<Image src="/logo.png" alt="ThothOrigin" width={240} height={240} style={{ objectFit: 'contain' }} />
+					</div>
 					<h2 className="text-white font-medium text-lg mb-2">Connect your wallet</h2>
 					<p className="text-[#CECBF6]/60 text-sm">You need to connect your wallet to deposit a manuscript.</p>
 					<div className="mt-6" style={{ display: 'flex', justifyContent: 'center', marginTop: '24px' }}>
@@ -154,7 +164,7 @@ export default function DepositPage() {
 		<div className="min-h-screen bg-[#1a1730] py-12 px-6 ">
 			<div className="max-w-xl mx-auto px-4">
 				<h1 className="text-2xl font-medium text-white mb-2">Deposit a manuscript</h1>
-				<p className="text-[#CECBF6]/60 text-sm mb-8">Your file never leaves your browser — only its fingerprint is recorded on-chain.</p>
+				<p className="text-[#CECBF6]/60 text-sm mb-8">Your file never leaves your browser, its fingerprint is recorded on-chain.</p>
 
 				{/* Steps */}
 				<div className="flex items-center gap-2 mb-8">
@@ -236,7 +246,7 @@ export default function DepositPage() {
 									const val = e.target.value
 									if (val === '' || /^\d+$/.test(val)) {
 										setPreviousTokenId(val)
-										setHasError(false)
+										setSimulateError(null)
 										reset()
 									}
 								}}
@@ -262,7 +272,7 @@ export default function DepositPage() {
 
 						<button
 							onClick={handleSubmit}
-							disabled={!title || isPending || isConfirming || hasError}
+							disabled={!title || isPending || isConfirming || !!error}
 							className="w-full py-3 rounded-lg bg-[#BA7517] text-white font-medium text-sm hover:bg-[#EF9F27] transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
 						>
 							{isPending ? 'Waiting for confirmation...' :
@@ -302,6 +312,7 @@ export default function DepositPage() {
 								setTitle('')
 								setPreviousTokenId('')
 								setMintedTokenId(null)
+								setSimulateError(null)
 								reset()
 							}}
 							className="block mx-auto mt-3 text-[#CECBF6]/50 text-xs hover:text-white transition-colors cursor-pointer"
