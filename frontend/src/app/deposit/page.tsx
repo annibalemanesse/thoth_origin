@@ -46,7 +46,7 @@ export default function DepositPage() {
 			const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
 			const log = receipt.logs.find(l =>
 				l.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase() &&
-				l.topics[0].toLowerCase() === MANUSCRIPT_REGISTERED_TOPIC
+				l.topics[0]?.toLowerCase() === MANUSCRIPT_REGISTERED_TOPIC
 			)
 			if (log && log.topics[1]) {
 				setMintedTokenId(BigInt(log.topics[1]))
