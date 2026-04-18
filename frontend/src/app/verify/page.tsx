@@ -248,9 +248,14 @@ export default function VerifyPage() {
 										)}
 									</div>
 								</div>
-								<button onClick={() => generateCertificate(manuscript)} className="...">
-									Download certificate
-								</button>
+								<div className="mt-4 pt-4 border-t border-[#1D9E75]/20">
+									<button
+										onClick={() => generateCertificate(manuscript as any)}
+										className="w-full py-2.5 rounded-lg border border-[#BA7517]/40 text-[#BA7517] text-sm font-medium hover:bg-[#BA7517]/10 transition-colors cursor-pointer"
+									>
+										Download certificate
+									</button>
+								</div>
 							</div>
 						)}
 					</div>

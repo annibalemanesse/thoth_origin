@@ -1,6 +1,15 @@
+'use client'
+
 import Link from 'next/link'
+import { useReadContract } from 'wagmi'
+import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
 
 export default function Home() {
+	const { data: totalSupply } = useReadContract({
+		address: CONTRACT_ADDRESS,
+		abi: CONTRACT_ABI,
+		functionName: 'totalSupply',
+	})
 	return (
 		<div className="min-h-screen bg-[#1a1730]">
 
@@ -93,7 +102,7 @@ export default function Home() {
 			{/* Stats */}
 			<section className="px-6 pb-16 max-w-6xl mx-auto grid grid-cols-3 gap-6">
 				<div className="bg-[#26215C]/20 rounded-lg p-5 text-center">
-					<div className="text-2xl font-medium text-[#534AB7]">0</div>
+					<div className="text-2xl font-medium text-[#534AB7]">{totalSupply !== undefined ? totalSupply.toString() : '—'}</div>
 					<div className="text-[#CECBF6]/60 text-xs mt-1">Manuscripts deposited</div>
 				</div>
 				<div className="bg-[#26215C]/20 rounded-lg p-5 text-center">

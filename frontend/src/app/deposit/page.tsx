@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
+import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId, useBlock } from 'wagmi'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
 import { generateCertificate } from '@/utils/certificate'
 
@@ -32,7 +32,13 @@ export default function DepositPage() {
 	const [hasError, setHasError] = useState(false)
 	const { mutate, data: txHash, isPending, error, reset } = useWriteContract()
 	const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash: txHash })
+	const { data: block } = useBlock({ blockNumber: receipt?.blockNumber, query: { enabled: !!receipt?.blockNumber } })
 	const [mintedTokenId, setMintedTokenId] = useState<bigint | null>(null)
+	const [blockTimestamp, setBlockTimestamp] = useState<bigint | null>(null)
+
+	useEffect(() => {
+		if (block?.timestamp) setBlockTimestamp(block.timestamp)
+	}, [block?.timestamp])
 
 	useEffect(() => {
 		if (isSuccess && receipt) {
@@ -288,19 +294,34 @@ export default function DepositPage() {
 						>
 							View my manuscripts →
 						</Link>
+						<button
+							onClick={() => {
+								setStep('file')
+								setFile(null)
+								setHash(null)
+								setTitle('')
+								setPreviousTokenId('')
+								setMintedTokenId(null)
+								reset()
+							}}
+							className="block mx-auto mt-3 text-[#CECBF6]/50 text-xs hover:text-white transition-colors cursor-pointer"
+						>
+							← Deposit another manuscript
+						</button>
 						{isSuccess && mintedTokenId !== null && (
 							<button
 								onClick={() => generateCertificate({
 									author: address!,
 									archived: false,
 									hasParent: !!previousTokenId,
-									timestamp: BigInt(Math.floor(Date.now() / 1000)),
+									timestamp: blockTimestamp!,
 									tokenId: mintedTokenId ?? BigInt(0),
 									hash: hash!,
 									previousTokenId: previousTokenId ? BigInt(previousTokenId) : BigInt(0),
 									title: title,
 								}, txHash)}
-								className="block mx-auto mt-4 px-4 py-2 rounded-lg bg-[#BA7517] text-white text-sm hover:bg-[#EF9F27] transition-colors cursor-pointer"
+								disabled={!blockTimestamp}
+								className="block mx-auto mt-4 px-4 py-2 rounded-lg bg-[#BA7517] text-white text-sm hover:bg-[#EF9F27] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								Download certificate
 							</button>

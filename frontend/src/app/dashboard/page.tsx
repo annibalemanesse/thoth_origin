@@ -22,9 +22,9 @@ const buildTree = (manuscripts: readonly Manuscript[]): ManuscriptWithChildren[]
 	const roots = manuscripts.filter(m => !m.hasParent)
 	const buildNode = (m: Manuscript): ManuscriptWithChildren => ({
 		...m,
-		children: manuscripts
-			.filter(child => child.hasParent && child.previousTokenId === m.tokenId)
-			.map(buildNode)
+		children:  manuscripts
+		.filter(child => child.hasParent && BigInt(child.previousTokenId) === BigInt(m.tokenId))
+		.map(buildNode)
 	})
 	return roots.map(buildNode)
 }
@@ -42,7 +42,7 @@ export default function DashboardPage() {
 		address: CONTRACT_ADDRESS,
 		abi: CONTRACT_ABI,
 		functionName: 'getManuscriptsByAuthor',
-		args: [address!],
+		args: [address!, BigInt(0)],
 		query: { enabled: !!address }
 	})
 
@@ -90,6 +90,13 @@ export default function DashboardPage() {
 
 	const ManuscriptCard = ({ node, depth = 0 }: { node: ManuscriptWithChildren, depth?: number }) => {
 		const isLoading = isPending && pendingTokenId === node.tokenId
+		const [copiedHash, setCopiedHash] = useState<string | null>(null)
+
+		const copyHash = (hash: string) => {
+			navigator.clipboard.writeText(hash)
+			setCopiedHash(hash)
+			setTimeout(() => setCopiedHash(null), 2000)
+		}
 
 		return (
 			<>
@@ -125,8 +132,18 @@ export default function DashboardPage() {
 								)}
 								<span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#EEEDFE', color: '#3C3489' }}>#{node.tokenId.toString()}</span>
 							</div>
-							<div className="font-mono text-xs truncate" style={{ color: '#AFA9EC' }}>
-								{node.hash.slice(0, 42)}...
+							<div className="flex items-center gap-2">
+								<div className="font-mono text-xs truncate" style={{ color: '#AFA9EC' }}>
+									{node.hash.slice(0, 42)}...
+								</div>
+								<button
+									onClick={() => copyHash(node.hash)}
+									className="text-xs flex-shrink-0 cursor-pointer transition-colors"
+									style={{ color: copiedHash === node.hash ? '#1D9E75' : '#AFA9EC' }}
+									title="Copy hash"
+								>
+									{copiedHash === node.hash ? '✓' : '⎘'}
+								</button>
 							</div>
 							<div className="text-xs mt-0.5" style={{ color: '#CECBF6', opacity: 0.5 }}>
 								{formatDate(node.timestamp)}

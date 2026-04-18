@@ -1,6 +1,4 @@
-# ThothOrigin 
-
-## Backend
+# ThothOrigin
 
 ThothOrigin is a DApp that lets authors prove the anteriority of their manuscript on the Ethereum blockchain. A timestamped hash of the file is stored on-chain and materialized as an ERC-721 NFT. Supports versioning and archiving.
 
@@ -19,6 +17,104 @@ Key features:
 - Archiving / unarchiving of manuscripts
 - Circuit breaker (pause / unpause) for emergency
 - Public verification by hash or tokenId
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Smart contract | Solidity ^0.8.28 |
+| Contract framework | Hardhat v3 |
+| Libraries | OpenZeppelin Contracts |
+| Contract tests | Hardhat + ethers.js |
+| Frontend | Next.js 16 + React 19 |
+| Wallet connection | Reown AppKit + Wagmi v3 + viem |
+| Styling | Tailwind CSS v4 |
+| Types | TypeScript |
+| Testnet | Sepolia (Alchemy / Infura) |
+
+---
+
+## Project Structure
+
+```
+thoth_origin/
+├── backend/
+│   ├── contracts/
+│   │   └── ManuscriptRegistry.sol   # Main smart contract
+│   ├── test/
+│   │   └── ManuscriptRegistry.ts    # Test suite
+│   ├── ignition/
+│   │   └── modules/                 # Deployment scripts
+│   ├── coverage/                    # Coverage report (generated)
+│   ├── hardhat.config.ts
+│   └── package.json
+└── frontend/
+    ├── src/
+    │   ├── app/
+    │   │   ├── page.tsx             # Home
+    │   │   ├── deposit/             # Deposit page
+    │   │   ├── dashboard/           # Author dashboard
+    │   │   └── verify/              # Public verification
+    │   ├── components/              # Navbar, ConnectButton
+    │   ├── config/                  # Wagmi / AppKit config
+    │   ├── context/                 # React providers
+    │   └── utils/                   # Hash computation, contract helpers
+    ├── next.config.ts
+    └── package.json
+```
+
+---
+
+## Frontend
+
+### Pages
+
+| Route | Description |
+|---|---|
+| `/` | Landing page |
+| `/deposit` | Hash a file and register it on-chain (new or new version) |
+| `/dashboard` | Author dashboard — list, archive, unarchive manuscripts |
+| `/verify` | Public verification by hash or tokenId |
+
+### Key design choices
+
+- **Client-side hashing** — SHA-256 computed in the browser via the Web Crypto API; the file is never uploaded anywhere.
+- **Reown AppKit** — handles wallet connection across multiple connectors (MetaMask, WalletConnect, etc.).
+- **Wagmi + viem** — typed contract reads and writes, transaction lifecycle management.
+- **PDF certificate** — jsPDF generates a downloadable proof-of-deposit certificate.
+
+### Getting Started (frontend)
+
+#### Prerequisites
+
+- Node.js >= 18
+- npm >= 9
+
+#### Installation
+
+```bash
+cd frontend
+npm install
+```
+
+#### Environment
+
+Create a `.env.local` file at the root of `frontend/`:
+
+```env
+NEXT_PUBLIC_PROJECT_ID=your_reown_project_id
+NEXT_PUBLIC_CONTRACT_ADDRESS=your_deployed_contract_address
+```
+
+#### Run
+
+```bash
+npm run dev      # development server
+npm run build    # production build
+npm run start    # production server
+```
 
 ---
 
@@ -43,13 +139,13 @@ ManuscriptRegistry
 
 ```solidity
 struct Manuscript {
-	address author;          // author's wallet — 20 bytes  ┐
-	bool    archived;        // archiving flag  —  1 byte   ├─ slot 1 (variable packing)
-	bool    hasParent;       // is a new version —  1 byte  │
-	uint64  timestamp;       // block.timestamp —  8 bytes  ┘
-	uint256 previousTokenId; // 0 if initial deposit        → slot 2
-	bytes32 hash;            // SHA-256 of the file         → slot 3
-	string  title;           // title of the work           → slot 4+
+    address author;          // author's wallet — 20 bytes  ┐
+    bool    archived;        // archiving flag  —  1 byte   ├─ slot 1 (variable packing)
+    bool    hasParent;       // is a new version —  1 byte  │
+    uint64  timestamp;       // block.timestamp —  8 bytes  ┘
+    uint256 previousTokenId; // 0 if initial deposit        → slot 2
+    bytes32 hash;            // SHA-256 of the file         → slot 3
+    string  title;           // title of the work           → slot 4+
 }
 ```
 
@@ -87,37 +183,16 @@ event ManuscriptUnarchived(uint256 indexed tokenId, address indexed author, uint
 - **Timestamp dependence** — `uint64` timestamp used as informational only, not as logic condition
 - **Overflow** — native Solidity ≥ 0.8
 
----
+### Getting Started (backend)
 
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Language | Solidity ^0.8.28 |
-| Framework | Hardhat v3 |
-| Libraries | OpenZeppelin Contracts |
-| Tests | Hardhat + ethers.js |
-| Types | TypeScript |
-| Testnet | Sepolia (Alchemy / Infura) |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js >= 18
-- npm >= 9
-
-### Installation
+#### Installation
 
 ```bash
-git clone https://github.com/<your-repo>/thoth_origin.git
-cd thoth_origin/backend
+cd backend
 npm install
 ```
 
-### Environment
+#### Environment
 
 Create a `.env` file at the root of `backend/`:
 
@@ -129,23 +204,19 @@ ETHERSCAN_API_KEY=your_etherscan_api_key
 
 > Never commit your `.env` file. It is already listed in `.gitignore`.
 
----
-
-## Usage
-
-### Compile
+#### Compile
 
 ```bash
 npx hardhat compile
 ```
 
-### Test
+#### Test
 
 ```bash
 npx hardhat test
 ```
 
-### Coverage
+#### Coverage
 
 ```bash
 npx hardhat coverage
@@ -153,14 +224,14 @@ npx hardhat coverage
 
 Current coverage: **94.34%** (min required: 80%)
 
-### Deploy (local)
+#### Deploy (local)
 
 ```bash
 npx hardhat node
 npx hardhat ignition deploy ./ignition/modules/ManuscriptRegistry.ts --network localhost
 ```
 
-### Deploy (Sepolia)
+#### Deploy (Sepolia)
 
 ```bash
 npx hardhat ignition deploy ./ignition/modules/ManuscriptRegistry.ts --network sepolia
@@ -181,23 +252,6 @@ npx hardhat ignition deploy ./ignition/modules/ManuscriptRegistry.ts --network s
 | `getManuscriptByHash` | 5 |
 | `getManuscriptByTokenId` | 5 |
 | `getManuscriptsByAuthor` | 5 |
-
----
-
-## Project Structure
-
-```
-backend/
-├── contracts/
-│   └── ManuscriptRegistry.sol   # Main smart contract
-├── test/
-│   └── ManuscriptRegistry.ts    # Test suite
-├── ignition/
-│   └── modules/                 # Deployment scripts
-├── coverage/                    # Coverage report (generated)
-├── hardhat.config.ts
-└── package.json
-```
 
 ---
 
