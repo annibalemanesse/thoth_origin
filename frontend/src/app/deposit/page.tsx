@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useConnection, useWriteContract, useWaitForTransactionReceipt, useChainId, useBlock, useConfig } from 'wagmi'
 import { simulateContract } from '@wagmi/core'
+import { parseEventLogs } from 'viem'
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '@/config/constants'
 import { generateCertificate } from '@/utils/certificate'
 
@@ -21,7 +22,6 @@ const ACCEPTED_FORMATS = [
 	'image/tiff',
 ]
 
-const MANUSCRIPT_REGISTERED_TOPIC = '0x78d2183b21e05f7a2f19af32e667731390e06ac07000c78cfc5b879407b962aa'
 
 export default function DepositPage() {
 	const config = useConfig()
@@ -49,12 +49,13 @@ export default function DepositPage() {
 	useEffect(() => {
 		if (isSuccess && receipt) {
 			setStep('confirm')
-			const log = receipt.logs.find(l =>
-				l.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase() &&
-				l.topics[0]?.toLowerCase() === MANUSCRIPT_REGISTERED_TOPIC
-			)
-			if (log && log.topics[1]) {
-				setMintedTokenId(BigInt(log.topics[1]))
+			const logs = parseEventLogs({
+				abi: CONTRACT_ABI,
+				eventName: 'ManuscriptRegistered',
+				logs: receipt.logs,
+			})
+			if (logs[0]) {
+				setMintedTokenId((logs[0] as any).args.tokenId)
 			}
 		}
 	}, [isSuccess, receipt])
@@ -287,6 +288,11 @@ export default function DepositPage() {
 					<div className="mt-6 bg-[#E1F5EE]/10 border border-[#1D9E75]/30 rounded-xl p-6 text-center">
 						<div className="text-3xl mb-3">✅</div>
 						<h3 className="text-white font-medium mb-1">Manuscript registered!</h3>
+						{mintedTokenId !== null && (
+							<span className="inline-block text-xs px-2 py-0.5 rounded-full mb-3" style={{ background: '#EEEDFE', color: '#3C3489' }}>
+								#{mintedTokenId.toString()}
+							</span>
+						)}
 						<p className="text-[#CECBF6]/60 text-xs mb-4">Your proof of anteriority has been recorded on the blockchain.</p>
 						{chainId === 11155111 && (
 							<a

@@ -43,7 +43,7 @@ export default function DashboardPage() {
 		address: CONTRACT_ADDRESS,
 		abi: CONTRACT_ABI,
 		functionName: 'getManuscriptsByAuthor',
-		args: [address!, BigInt(0)],
+		args: [address!],
 		query: { enabled: !!address }
 	})
 

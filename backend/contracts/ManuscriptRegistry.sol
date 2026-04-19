@@ -29,17 +29,16 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @notice Maximum depth of a version chain. Set once in constructor
 	uint8 public immutable MAX_CHAIN_DEPTH;
 	uint256 private _nextTokenId = 1;
-	mapping(uint256 => Manuscript)	private _manuscripts;
-	mapping(bytes32 => uint256)		private _hashToTokenId;
 	mapping(uint256 => uint256[])	private _children;
 	mapping(uint256 => uint8)		private _depths;
+	mapping(bytes32 => uint256)		private _hashToTokenId;
+	mapping(uint256 => Manuscript)	private _manuscripts;
 
 	/// @notice Represents a registered manuscript
-	/// @dev Optimized with variable packing — slot 1: author + archived + hasParent + timestamp
+	/// @dev Optimized with variable packing — slot 1: author + archived + timestamp
 	struct Manuscript {
 		address	author;				// author's wallet address
 		bool	archived;			// whether the manuscript has been archived by its author
-		bool	hasParent;			// true if this manuscript is a new version of an existing one
 		uint64	timestamp;			// block.timestamp at the time of registration
 		uint256	tokenId;			// manuscript tokenId
 		bytes32	hash;				// SHA-256 hash of the file
@@ -56,8 +55,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param title Title of the work
 	/// @param timestamp Block timestamp
 	/// @param previousTokenId TokenId of the previous manuscript (0 if initial deposit)
-	/// @param hasParent True if this is a new version
-	event ManuscriptRegistered(uint256 indexed tokenId, address indexed author, bytes32 hash, string title, uint64 timestamp, uint256 previousTokenId, bool hasParent);
+	event ManuscriptRegistered(uint256 indexed tokenId, address indexed author, bytes32 hash, string title, uint64 timestamp, uint256 previousTokenId);
 
 	/// @notice Emitted when a manuscript is archived
 	/// @param tokenId Unique NFT identifier
@@ -121,21 +119,18 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 
 	// ::::::::::::: GETTERS ::::::::::::: //
 
-	/// @notice Retrieves a paginated list of manuscripts belonging to an author
+	/// @notice Retrieves the manuscripts belonging to an author (up to MAX_MANUSCRIPTS_PER_QUERY)
 	/// @dev Uses ERC721Enumerable to iterate over the address's tokens.
-	///      The caller can use balanceOf(author) to compute the total and paginate.
 	/// @param author Author's wallet address
-	/// @param offset Index to start from (0-based)
 	/// @return Manuscript[] Array of up to MAX_MANUSCRIPTS_PER_QUERY manuscripts
-	function getManuscriptsByAuthor(address author, uint256 offset) external view returns(Manuscript[] memory) {
-		uint256 balance = balanceOf(author);
-		if (offset >= balance) return new Manuscript[](0);
+	function getManuscriptsByAuthor(address author) external view returns(Manuscript[] memory) {
+		uint256 nbManuscripts = balanceOf(author);
+		if (nbManuscripts == 0) return new Manuscript[](0);
 
-		uint256 remaining = balance - offset;
-		uint256 size = remaining < MAX_MANUSCRIPTS_PER_QUERY ? remaining : MAX_MANUSCRIPTS_PER_QUERY;
+		uint256 size = nbManuscripts < MAX_MANUSCRIPTS_PER_QUERY ? nbManuscripts : MAX_MANUSCRIPTS_PER_QUERY;
 		Manuscript[] memory result = new Manuscript[](size);
 		for (uint256 i = 0; i < size; i++) {
-			result[i] = _manuscripts[tokenOfOwnerByIndex(author, offset + i)];
+			result[i] = _manuscripts[tokenOfOwnerByIndex(author, i)];
 		}
 
 		return result;
@@ -181,7 +176,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @custom:error TitleTooLong If the title exceeds 100 characters
 	/// @custom:error ManuscriptAlreadyExists If the hash is already registered
 	function registerManuscript(bytes32 hash, string calldata title) external whenNotPaused {
-		_registerManuscript(hash, title, 0, false, 0);
+		_registerManuscript(hash, title, 0, 0);
 	}
 
 	/// @notice Registers a new version of an existing manuscript
@@ -197,7 +192,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		require(!_manuscripts[previousTokenId].archived, OriginManuscriptAlreadyArchived());
 		require(_depths[previousTokenId] < MAX_CHAIN_DEPTH, ChainTooDeep());
 
-		_registerManuscript(hash, title, previousTokenId, true, _depths[previousTokenId] + 1);
+		_registerManuscript(hash, title, previousTokenId, _depths[previousTokenId] + 1);
 	}
 
 	/// @notice Archives a manuscript: marks it as inactive without deleting it
@@ -241,9 +236,8 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @param hash SHA-256 hash of the file
 	/// @param title Title of the work
 	/// @param previousTokenId TokenId of the previous manuscript (0 if initial deposit)
-	/// @param hasParent True if this is a new version of an existent manuscript
 	/// @param depth Depth of this manuscript in the version chain (0 for root)
-	function _registerManuscript(bytes32 hash, string calldata title, uint256 previousTokenId, bool hasParent, uint8 depth) internal {
+	function _registerManuscript(bytes32 hash, string calldata title, uint256 previousTokenId, uint8 depth) internal {
 		uint256 len = bytes(title).length;
 		require(len > 0, TitleEmpty());
 		require(len <= 100, TitleTooLong());
@@ -253,14 +247,13 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		uint256 tokenId = _nextTokenId;
 		_depths[tokenId] = depth;
 
-		if (hasParent) {
+		if (previousTokenId != 0) {
 			_children[previousTokenId].push(tokenId);
 		}
 
 		_manuscripts[tokenId] = Manuscript({
 			author: msg.sender,
 			archived: false,
-			hasParent: hasParent,
 			timestamp: timestamp,
 			tokenId: tokenId,
 			hash: hash,
@@ -271,7 +264,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		_nextTokenId++;
 
 		_safeMint(msg.sender, tokenId);
-		emit ManuscriptRegistered(tokenId, msg.sender, hash, title, timestamp, previousTokenId, hasParent);
+		emit ManuscriptRegistered(tokenId, msg.sender, hash, title, timestamp, previousTokenId);
 	}
 
 	/// @dev Archives the manuscript and all its descendants recursively
@@ -292,7 +285,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	function _unarchiveWithParents(uint256 tokenId) internal {
 		_setArchived(tokenId, false);
 		emit ManuscriptUnarchived(tokenId, msg.sender, uint64(block.timestamp));
-		if (_manuscripts[tokenId].hasParent) {
+		if (_manuscripts[tokenId].previousTokenId != 0) {
 			uint256 parentId = _manuscripts[tokenId].previousTokenId;
 			if (_manuscripts[parentId].archived) {
 				_unarchiveWithParents(parentId);

@@ -101,7 +101,7 @@ describe('Manuscript registry contract', function () {
 		it('Should emit a ManuscriptRegisterd event', async function () {
 			await expect(manuscriptRegistry.connect(author1).registerManuscript(hash1, 'Lorem Ipsum'))
 					.to.emit(manuscriptRegistry, "ManuscriptRegistered")
-					.withArgs(1, author1.address, hash1, 'Lorem Ipsum', anyValue, 0, false);
+					.withArgs(1, author1.address, hash1, 'Lorem Ipsum', anyValue, 0);
 		});
 
 		it("Should create an NFT sent to author's wallet", async function () {
@@ -151,7 +151,7 @@ describe('Manuscript registry contract', function () {
 		it('Should emit a ManuscriptRegistered event', async function () {
 			await expect(manuscriptRegistry.connect(author1).registerNewVersion(hash2, 'Lorem Ipsum v.2', 1))
 				.to.emit(manuscriptRegistry, "ManuscriptRegistered")
-				.withArgs(2, author1.address, hash2, 'Lorem Ipsum v.2', anyValue, 1, true);
+				.withArgs(2, author1.address, hash2, 'Lorem Ipsum v.2', anyValue, 1);
 		});
 
 		it("Should create an NFT sent to author's wallet", async function () {
@@ -408,17 +408,17 @@ describe('Manuscript registry contract', function () {
 		it('Should return manuscripts if contract paused', async function () {
 			await manuscriptRegistry.pause();
 
-			const manuscripts = await manuscriptRegistry.connect(author1).getManuscriptsByAuthor(author1.address, 0);
+			const manuscripts = await manuscriptRegistry.connect(author1).getManuscriptsByAuthor(author1.address);
 			expect(manuscripts.length).to.equal(2);
 		});
 
 		it("Should return other author's manuscripts", async function () {
-			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author1.address, 0);
+			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author1.address);
 			expect(manuscripts.length).to.equal(2);
 		});
 
 		it('Should return empty array if author has 0 manuscript registered', async function () {
-			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author2.address, 0);
+			const manuscripts = await manuscriptRegistry.connect(author2).getManuscriptsByAuthor(author2.address);
 			expect(manuscripts.length).to.equal(0);
 		});
 
@@ -429,7 +429,7 @@ describe('Manuscript registry contract', function () {
 
 			await registerManuscripts(manuscriptRegistry, author1, toAdd, 'manuscript');
 
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 0);
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address);
 			expect(result.length).to.equal(setupCount + toAdd);
 		});
 
@@ -439,19 +439,8 @@ describe('Manuscript registry contract', function () {
 
 			await registerManuscripts(manuscriptRegistry, author1, toAdd, 'manuscript-fuzz');
 
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 0);
+			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address);
 			expect(result.length).to.equal(max);
-		});
-
-		it('Should return manuscripts from a non-zero offset', async function () {
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 1);
-			expect(result.length).to.equal(1);
-			expect(result[0].hash).to.equal(hash2);
-		});
-
-		it('Should return empty array if offset exceeds balance', async function () {
-			const result = await manuscriptRegistry.getManuscriptsByAuthor(author1.address, 99);
-			expect(result.length).to.equal(0);
 		});
 	});
 
