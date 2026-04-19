@@ -74,7 +74,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @dev Checks that the tokenId exists and that the caller is its owner
 	/// @param tokenId NFT identifier to verify
 	modifier authorOnly(uint256 tokenId) {
-		require(tokenIdExists(tokenId), ManuscriptNotFound());
+		require(_tokenIdExists(tokenId), ManuscriptNotFound());
 		require(ownerOf(tokenId) == msg.sender, Unauthorized());
 		_;
 	}
@@ -151,7 +151,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @return Manuscript The full manuscript struct
 	/// @custom:error ManuscriptNotFound If the tokenId does not exist
 	function getManuscriptByTokenId(uint256 tokenId) public view returns(Manuscript memory) {
-		require(tokenIdExists(tokenId), ManuscriptNotFound());
+		require(_tokenIdExists(tokenId), ManuscriptNotFound());
 		return _manuscripts[tokenId];
 	}
 
@@ -187,7 +187,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @custom:error OriginManuscriptAlreadyArchived If the previous manuscript is archived
 	/// @custom:error ChainTooDeep If the version chain has reached MAX_CHAIN_DEPTH
 	function registerNewVersion(bytes32 hash, string calldata title, uint256 previousTokenId) external whenNotPaused {
-		require(tokenIdExists(previousTokenId), OriginManuscriptNotFound());
+		require(_tokenIdExists(previousTokenId), OriginManuscriptNotFound());
 		require(ownerOf(previousTokenId) == msg.sender, Unauthorized());
 		require(!_manuscripts[previousTokenId].archived, OriginManuscriptAlreadyArchived());
 		require(_depths[previousTokenId] < MAX_CHAIN_DEPTH, ChainTooDeep());
@@ -205,7 +205,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 		_archiveRecursive(tokenId);
 	}
 
-	/// @notice Unarchives a manuscript — restores it to active status
+	/// @notice Unarchives a manuscript : restores it to active status
 	/// @dev Parents are unarchived recursively if needed. Siblings are not affected.
 	/// @param tokenId NFT identifier to unarchive
 	/// @custom:error ManuscriptNotFound If the tokenId does not exist
@@ -228,7 +228,7 @@ contract ManuscriptRegistry is ERC721, ERC721Enumerable, ERC721Pausable, Ownable
 	/// @dev Checks whether a tokenId exists
 	/// @param tokenId NFT identifier to verify
 	/// @return bool True if the token exists
-	function tokenIdExists(uint256 tokenId) internal view returns(bool) {
+	function _tokenIdExists(uint256 tokenId) internal view returns(bool) {
 		return _ownerOf(tokenId) != address(0);
 	}
 

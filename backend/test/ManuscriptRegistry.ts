@@ -182,17 +182,32 @@ describe('Manuscript registry contract', function () {
 			await manuscriptRegistry.connect(author1).registerNewVersion(hash3, 'Lorem Ipsum v.3', 2); // token 3, depth 2
 		});
 
-		it('Should not be able to register new version if chain depth is exceeded', async function () {
-			await expect(
-				manuscriptRegistry.connect(author1).registerNewVersion(hash4, 'Lorem Ipsum v.4', 3)
-			).to.be.revertedWithCustomError(manuscriptRegistry, 'ChainTooDeep');
-		});
-
 		it('Should be able to register a sibling version within depth limit', async function () {
 			// token 2 is at depth 1 < MAX_CHAIN_DEPTH (2), so a sibling of token 3 is allowed
 			await expect(
 				manuscriptRegistry.connect(author1).registerNewVersion(hash4, 'Lorem Ipsum v.3b', 2)
 			).not.to.revert(ethers);
+		});
+
+		it('Should revert at ChainTooDeep for any random depth limit', async function () {
+			const maxDepth = deterministicRandom('chain-depth-fuzz', 9) + 1; // 1 to 9
+			const [, a1] = await ethers.getSigners();
+			const registry = await ethers.deployContract("ManuscriptRegistry", [5, maxDepth]);
+
+			const rootHash = ethers.keccak256(ethers.toUtf8Bytes('chain-fuzz-0'));
+			await registry.connect(a1).registerManuscript(rootHash, 'Root');
+			let lastTokenId = 1;
+
+			for (let i = 1; i <= maxDepth; i++) {
+				const h = ethers.keccak256(ethers.toUtf8Bytes(`chain-fuzz-${i}`));
+				await registry.connect(a1).registerNewVersion(h, `Version ${i}`, lastTokenId);
+				lastTokenId++;
+			}
+
+			const extraHash = ethers.keccak256(ethers.toUtf8Bytes('chain-fuzz-extra'));
+			await expect(
+				registry.connect(a1).registerNewVersion(extraHash, 'Too deep', lastTokenId)
+			).to.be.revertedWithCustomError(registry, 'ChainTooDeep');
 		});
 	});
 

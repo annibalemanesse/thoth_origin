@@ -141,15 +141,15 @@ ManuscriptRegistry
 struct Manuscript {
     address author;          // author's wallet — 20 bytes  ┐
     bool    archived;        // archiving flag  —  1 byte   ├─ slot 1 (variable packing)
-    bool    hasParent;       // is a new version —  1 byte  │
     uint64  timestamp;       // block.timestamp —  8 bytes  ┘
-    uint256 previousTokenId; // 0 if initial deposit        → slot 2
+    uint256 tokenId;         // NFT identifier              → slot 2
     bytes32 hash;            // SHA-256 of the file         → slot 3
-    string  title;           // title of the work           → slot 4+
+    uint256 previousTokenId; // 0 if initial deposit        → slot 4
+    string  title;           // title of the work           → slot 5+
 }
 ```
 
-> Variable packing applied: `address + bool + bool + uint64` fit in a single 32-byte storage slot.
+> Variable packing applied: `address + bool + uint64` fit in a single 32-byte storage slot.
 
 ### Functions
 
@@ -161,13 +161,13 @@ struct Manuscript {
 | `unarchiveManuscript(uint256)` | external | Unarchive a manuscript |
 | `getManuscriptByHash(bytes32)` | external view | Retrieve a manuscript by hash |
 | `getManuscriptByTokenId(uint256)` | external view | Retrieve a manuscript by tokenId |
-| `getManuscriptsByAuthor(address, uint256)` | external view | Retrieve all manuscripts by author (paginated) |
+| `getManuscriptsByAuthor(address)` | external view | Retrieve manuscripts by author (up to MAX_MANUSCRIPTS_PER_QUERY) |
 | `pause()` / `unpause()` | external onlyOwner | Circuit breaker |
 
 ### Events
 
 ```solidity
-event ManuscriptRegistered(uint256 indexed tokenId, address indexed author, bytes32 hash, string title, uint64 timestamp, uint256 previousTokenId, bool hasParent);
+event ManuscriptRegistered(uint256 indexed tokenId, address indexed author, bytes32 hash, string title, uint64 timestamp, uint256 previousTokenId);
 event ManuscriptArchived(uint256 indexed tokenId, address indexed author, uint64 timestamp);
 event ManuscriptUnarchived(uint256 indexed tokenId, address indexed author, uint64 timestamp);
 ```
@@ -241,17 +241,21 @@ npx hardhat ignition deploy ./ignition/modules/ManuscriptRegistry.ts --network s
 
 ## Tests
 
-42 tests covering all contract functions:
+49 tests covering all contract functions:
 
 | Describe | Tests |
 |---|---|
 | `registerManuscript` | 7 |
 | `registerNewVersion` | 8 |
+| `registerNewVersion chain depth` | 2 |
 | `archiveManuscript` | 6 |
+| `archiveManuscript cascade` | 2 |
 | `unarchiveManuscript` | 6 |
+| `unarchiveManuscript cascade` | 2 |
 | `getManuscriptByHash` | 5 |
 | `getManuscriptByTokenId` | 5 |
 | `getManuscriptsByAuthor` | 5 |
+| `_update` | 1 |
 
 ---
 
